@@ -1,0 +1,286 @@
+<html>
+	<head>
+		<title>3D</title>
+		<script src="3dutil.js"></script>
+		<script language="javascript">
+			var debugDraw = false;
+			var debugProjection = false;
+			var debugRectClip = false;
+			var debugProjetionPlanar = false;
+			var debugShowGrid = true;
+			
+			//camera object. with basic ability to project point
+			//camera position and focal length
+			function Camera(pos, focalLength)
+			{
+				var r = { pos:pos, fl:focalLength };
+				
+				r.map = function(pt)
+				{
+					//vector from camera to "pt""
+					var way = pt.sub(this.pos);
+					//project "way" to camera direction
+					var len = way.dot(this.direction);
+
+					if (debugProjection)
+						console.log("* pt " + pt.toString() + " fl " + len);
+
+					if (len > 0)
+					{
+						//vector from camera to projected point
+						var projPt = way.mul(1.0/len).mul(this.fl);
+						
+						if (debugProjection)
+						{
+							console.log("  to " + projPt.toString());
+						}
+
+						//convert coordinate to projection planar
+						var ret = Vector(projPt.dot(this.xProj), projPt.dot(this.yProj), 0);
+						if (debugProjection)
+						{
+							console.log("  projected: " + ret.toString());
+						}
+						return ret;
+					}
+					else
+					{
+						return null;
+					}
+				};
+
+				r.see = function(dir)
+				{
+					this.direction = dir;
+
+					dir = dir.neg();
+
+					//x-axis and y-axis for coordinate of projection planar
+					if (dir.y == 0 && dir.x == 0)
+						this.xProj = Vector(1, 0, 0);
+					else
+						this.xProj = Vector(-dir.y, dir.x, 0).norm();
+					this.yProj = dir.cross(this.xProj).norm();
+
+					if (debugProjetionPlanar)
+					{
+						console.log("view from " + this.pos.toString() + " direction: " + this.direction.toString());
+						console.log("proj plan x: " + this.xProj.toString());
+						console.log("proj plan y: " + this.yProj.toString());
+					}
+				};
+
+				r.seeTo = function(pt)
+				{
+					var dir = pt.sub(this.pos).norm();
+					this.see(dir);
+				};
+
+				r.moveForward = function(distance)
+				{
+					this.pos = this.pos.add(this.direction.mul(distance));
+				};
+
+				r.move = function(x, y, z)
+				{
+					this.pos.x = this.pos.x + x;
+					this.pos.y = this.pos.y + y;
+					this.pos.z = this.pos.z + z;
+				};
+
+				r.moveTo = function(x, y, z)
+				{
+					this.pos.x = x;
+					this.pos.y = y;
+					this.pos.z = z;
+				};
+
+				r.seeTo(Vector(0, 0, 0));
+				
+				return r;
+			}
+
+			function DrawRect(ctx, camera, points)
+			{
+				//project rectangle to projection planar
+				var mapPts = new Array();
+				var i;
+				for (i = 0; i < 4; i = i + 1)
+				{
+					mapPts[i] = camera.map(points[i]);
+				}
+
+				var v1 = mapPts[1].sub(mapPts[0]);
+				var v2 = mapPts[2].sub(mapPts[1]);
+				var rectDir = v1.cross(v2);
+
+				var projLen = rectDir.dot(camera.direction);
+
+				if (debugRectClip)
+				{
+					console.log("rect direction: " + rectDir.toString() + " projected to camera direction: " + projLen);
+				}
+
+				//determine if it is rectangle's front
+				if (rectDir.z > 0)
+				{
+					ctx.beginPath();
+
+					var pt = camera.map(points[3]);
+					if (debugDraw)
+						console.log("move to: (" + pt.x + "," + pt.y + ")");
+					ctx.moveTo(pt.x, pt.y);
+
+					var i;
+					for (i = 0; i < 4; i = i + 1)
+					{
+						pt = camera.map(points[i]);
+						if (debugDraw)
+							console.log("line to: (" + pt.x + "," + pt.y + ")");
+						ctx.lineTo(pt.x, pt.y)
+					}
+
+					ctx.closePath();
+					ctx.fill();
+					ctx.stroke();
+
+					return true;
+				}
+				else
+					return false;
+			}
+
+		</script>
+	</head>
+	<body>
+		<canvas id="MyCanvas" style="background: lightgray" width="640" height="640"></canvas>
+
+		<script language="javascript">
+			var w = 640, h = 640;
+
+			var c = document.getElementById("MyCanvas").getContext("2d");
+			c.scale(w / 2, -h / 2);
+			c.translate(1, -1);
+			c.lineWidth = 2.0 / w;
+
+			var rectFront = new Array(
+				Vector(1, -1, 2), Vector(-1, -1, 2), Vector(-1, -1, 0), Vector(1, -1, 0)
+			);
+			var frontToBack = Vector(0, 2, 0);
+			var rectBack = new Array(
+				rectFront[3].add(frontToBack), rectFront[2].add(frontToBack), rectFront[1].add(frontToBack), rectFront[0].add(frontToBack)
+			);
+
+			var rectUp = new Array(
+				Vector(1, 1, 2), Vector(-1, 1, 2), Vector(-1, -1, 2), Vector(1, -1, 2)
+			);
+			var upToDown = Vector(0, 0, -2);
+			var rectDown = new Array(
+				rectUp[3].add(upToDown), rectUp[2].add(upToDown), rectUp[1].add(upToDown), rectUp[0].add(upToDown)
+			);
+
+			var rectLeft = new Array(
+				Vector(-1, 1, 2), Vector(-1, 1, 0), Vector(-1, -1, 0), Vector(-1, -1, 2)
+			);
+			var leftToRight = Vector(2, 0, 0);
+			var rectRight = new Array(
+				rectLeft[3].add(leftToRight), rectLeft[2].add(leftToRight), rectLeft[1].add(leftToRight), rectLeft[0].add(leftToRight)
+			);
+			
+			var rects = new Array(rectFront, rectBack, rectUp, rectDown, rectLeft, rectRight);
+
+			var cam = Camera(Vector(-10, -10, 10), 2);
+
+			function Draw()
+			{
+				c.clearRect(-1, -1, 2, 2);
+
+				if (debugShowGrid)
+				{
+					var savedClr = c.strokeStyle;
+					var savedDebugProjection = debugProjection;
+
+					debugProjection = false;
+
+					var i;
+					for(i = -10; i < 10; i = i + 1)
+					{
+						var xsPt = cam.map(Vector(-10, i, 0));
+						var xePt = cam.map(Vector(10, i, 0));
+						var ysPt = cam.map(Vector(i, -10, 0));
+						var yePt = cam.map(Vector(i, 10, 0));
+
+						if (i == 0)
+						{
+							xsPt = ysPt = cam.map(Vector(0, 0, 0));
+							c.strokeStyle = "red";
+						}
+						else
+							c.strokeStyle = "gray";
+
+						c.beginPath();
+						if (xsPt != null && xePt != null)
+						{
+							c.moveTo(xsPt.x, xsPt.y);
+							c.lineTo(xePt.x, xePt.y);
+						}
+
+						if (ysPt != null && yePt != null)
+						{
+							c.moveTo(ysPt.x, ysPt.y);
+							c.lineTo(yePt.x, yePt.y);
+						}
+
+						c.closePath();
+						c.stroke();
+					}
+
+					c.strokeStyle = savedClr;
+
+					debugProjection = savedDebugProjection;
+				}
+
+				c.fillStyle = "white";
+				var i;
+				for (i = 0; i < rects.length; i = i + 1)
+				{
+					DrawRect(c, cam, rects[i]);
+				}
+			}
+
+			Draw();
+		</script>
+
+		<br />
+		
+		<!--
+		<button onclick="cam.moveForward(0.5); Draw();">前进</button>
+		<button onclick="cam.moveForward(-0.5); Draw();">后退</button>
+		<button onclick="cam.move(0, 0.5, 0); Draw();">Y+</button>
+		<button onclick="cam.move(0, -0.5, 0); Draw();">Y-</button>
+		<button onclick="cam.move(0.5, 0, 0); Draw();">X+</button>
+		<button onclick="cam.move(-0.5, 0, 0); Draw();">X-</button>
+		-->
+
+		
+		<script langauge="javascript">
+			var angle = 0;
+
+			var proc = function() {
+				setTimeout(proc, 33);
+
+				cam.moveTo(-10 * Math.sin(angle), -10 * Math.cos(angle), cam.pos.z);
+				cam.seeTo(Vector(0, 0, 0));
+				angle += 0.01;
+
+				Draw();
+			};
+
+			setTimeout(proc, 3);
+		</script>
+		
+
+		<button onclick="cam.move(0, 0, 0.5); Draw();">Z+</button>
+		<button onclick="cam.move(0, 0, -0.5); Draw();">Z-</button>
+	</body>
+</html>
